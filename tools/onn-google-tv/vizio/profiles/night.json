@@ -1,0 +1,14 @@
+{
+  "picture/picture_mode": "Calibrated Dark",
+  "picture/backlight": 40,
+  "picture/color/color_temperature": "Warm",
+  "picture/clarity/sharpness": 20,
+  "picture/clarity/signal_noise": "Off",
+  "picture/clarity/block_noise": "Off",
+  "picture/clarity/contour_smoothing": "Off",
+  "picture/clarity/edge_enhancement": "Off",
+  "picture/clarity/super_resolution": "Off",
+  "picture/clarity/black_detail": "Off",
+  "picture/motion_control/judder_reduction": 0,
+  "picture/advanced_picture/ambient_light_sensor": "Off"
+}

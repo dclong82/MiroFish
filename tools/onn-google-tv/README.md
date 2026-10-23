@@ -81,3 +81,9 @@ the Input button on the onn remote keeps working. Step 2 prints the inputs it fo
 - `state/` what was changed (package list, uids, settings). Used by restore. Not committed.
 - `backups/<serial>-<time>/` the pre-change snapshot. Keep it. Not committed.
 - `downloads/` the FLauncher APK. Not committed.
+
+## If the onn set runs Vizio OS instead of Google TV
+
+Some onn TVs run Vizio's OS (menus like Watch Free+, HDMI & Gaming, Privacy & Legal). No adb
+there. See `VIZIO-OS-ONN-TV-SETUP.md` for the manual checklist and `vizio/viziotv.ps1` plus
+`vizio/HANDOFF-codex-vizio.md` for driving its local control API (port 7345) from a PC.

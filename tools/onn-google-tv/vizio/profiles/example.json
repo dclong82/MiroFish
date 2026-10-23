@@ -1,0 +1,13 @@
+{
+  "picture/picture_mode": "Calibrated Dark",
+  "picture/color_temperature": "Warm",
+  "picture/sharpness": 0,
+  "picture/more_picture/reduce_judder": 0,
+  "picture/more_picture/reduce_blur": 0,
+  "picture/more_picture/clear_action": "Off",
+  "picture/more_picture/reduce_noise": "Off",
+  "picture/more_picture/reduce_block_noise": "Off",
+  "picture/more_picture/film_mode": "Auto",
+  "picture/more_picture/active_full_array": "High",
+  "picture/more_picture/auto_brightness_control": "Off"
+}

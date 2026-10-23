@@ -7,6 +7,7 @@ Works in Windows PowerShell 5.1 and PowerShell 7. No modules needed.
   .\viziotv.ps1 dump                      # BACKUP: every setting menu -> backups\<time>.json  (run first)
   .\viziotv.ps1 settings picture          # list a settings menu (picture, audio, system, devices, ...)
   .\viziotv.ps1 settings                  # list top-level menus
+  .\viziotv.ps1 tree [menu]               # every setting under a menu (or all), one per line
   .\viziotv.ps1 options picture/picture_mode     # allowed values for one setting
   .\viziotv.ps1 set picture/picture_mode "Calibrated Dark"
   .\viziotv.ps1 apply profiles\example.json      # many settings at once, with a confirmation
@@ -152,11 +153,12 @@ switch ($Command.ToLower()) {
   }
   "raw" { Get-Raw ($Arg1 -replace '^/','') }
   "info" {
-    $r = Invoke-Tv GET "state/device/deviceinfo"
-    $d = if ($r.ITEMS) { $r.ITEMS[0].VALUE } elseif ($r.ITEM) { $r.ITEM.VALUE } else { $r }
-    "model:    $($d.MODEL_NAME)   version: $($d.VERSION)   serial: $($d.SERIAL_NUMBER)"
-    "power:    " + $(if ((Invoke-Tv GET "state/device/power_mode").ITEMS[0].VALUE -eq 1) { "on" } else { "off/standby" })
-    "input:    " + (Invoke-Tv GET "menu_native/dynamic/tv_settings/devices/current_input").ITEMS[0].VALUE
+    try { $r = Invoke-Tv GET "state/device/deviceinfo"
+          $d = if ($r.ITEMS) { $r.ITEMS[0].VALUE } elseif ($r.ITEM) { $r.ITEM.VALUE } else { $r }
+          "model:    $($d.MODEL_NAME)   version: $($d.VERSION)   serial: $($d.SERIAL_NUMBER)" } catch { "model:    (deviceinfo not available: $_)" }
+    try { "power:    " + $(if ((Invoke-Tv GET "state/device/power_mode").ITEMS[0].VALUE -eq 1) { "on" } else { "off/standby" }) } catch { "power:    (n/a)" }
+    try { "input:    " + (Invoke-Tv GET "menu_native/dynamic/tv_settings/devices/current_input").ITEMS[0].VALUE } catch { "input:    (n/a)" }
+    try { Show-Menu "system/tv_information" } catch {}
     try { $a = (Invoke-Tv GET "app/current").ITEM.VALUE; "app:      NAME_SPACE=$($a.NAME_SPACE) APP_ID=$($a.APP_ID)" } catch {}
   }
   "dump" {
@@ -169,6 +171,14 @@ switch ($Command.ToLower()) {
     Write-Host "Saved $($acc.Count) settings to $f"
   }
   "settings" { Show-Menu ($Arg1 -replace '^/','') }
+  "tree" {
+    $acc = @{}
+    Dump-Menu ($Arg1 -replace '^/','') 0 $acc
+    foreach ($k in ($acc.Keys | Sort-Object)) {
+      $v = $acc[$k].value; if ($v -is [System.Management.Automation.PSCustomObject]) { $v = ($v | ConvertTo-Json -Compress) }
+      "{0,-58} = {1}" -f $k, $v
+    }
+  }
   "options"  { Get-Options $Arg1 }
   "set"      { Set-Setting $Arg1 $Arg2 }
   "apply" {
@@ -179,8 +189,9 @@ switch ($Command.ToLower()) {
     foreach ($p in $plan.PSObject.Properties) { try { Set-Setting $p.Name $p.Value -Quiet } catch { Write-Warning "$($p.Name): $_" } }
   }
   "inputs" {
-    (Invoke-Tv GET "menu_native/dynamic/tv_settings/devices/name_input").ITEMS | ForEach-Object { "{0,-10} {1}" -f $_.CNAME, $_.VALUE.NAME }
-    "current:   " + (Invoke-Tv GET "menu_native/dynamic/tv_settings/devices/current_input").ITEMS[0].VALUE
+    try { (Invoke-Tv GET "menu_native/dynamic/tv_settings/devices/name_input").ITEMS | ForEach-Object { "{0,-10} {1}" -f $_.CNAME, $_.VALUE.NAME } }
+    catch { Show-Menu "system/manage_input_list" }
+    try { "current:   " + (Invoke-Tv GET "menu_native/dynamic/tv_settings/devices/current_input").ITEMS[0].VALUE } catch { "current:   (devices/current_input not available on this firmware)" }
   }
   "input" {
     $cur = (Invoke-Tv GET "menu_native/dynamic/tv_settings/devices/current_input").ITEMS[0]

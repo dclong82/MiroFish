@@ -102,7 +102,15 @@ function Show-Menu([string]$path) {
 function Get-Options([string]$full) {
   $r = Invoke-Tv GET "menu_native/static/tv_settings/$full"
   $it = $r.ITEMS | Select-Object -First 1
-  if ($it.ELEMENTS) { $it.ELEMENTS } elseif ($null -ne $it.MINIMUM) { "range $($it.MINIMUM)..$($it.MAXIMUM)" } else { $it }
+  if ($it.ELEMENTS) { return $it.ELEMENTS }
+  if ($null -ne $it.MINIMUM) { return "range $($it.MINIMUM)..$($it.MAXIMUM)" }
+  # LIST_X settings publish their choices on the dynamic endpoint instead.
+  try {
+    $d = Invoke-Tv GET "menu_native/dynamic/tv_settings/$full"
+    $di = $d.ITEMS | Select-Object -First 1
+    if ($di.ELEMENTS) { return $di.ELEMENTS }
+  } catch {}
+  $it
 }
 # Returns @{ item=<menu item>; value=<normalised value>; error=<string or $null>; options=<allowed> }
 function Resolve-Setting([string]$full, $value) {

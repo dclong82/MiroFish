@@ -14,6 +14,7 @@ Works in Windows PowerShell 5.1 and PowerShell 7. No modules needed.
   .\viziotv.ps1 power on|off|toggle
   .\viziotv.ps1 key HOME|BACK|OK|UP|DOWN|LEFT|RIGHT|MENU|EXIT|VOL_UP|VOL_DOWN|MUTE_TOGGLE|PLAY|PAUSE|INPUT_NEXT
   .\viziotv.ps1 app                       # current app
+  .\viziotv.ps1 raw state/device/deviceinfo    # print the TV's raw reply for any API path (debugging)
 
 Set the TV address once:  $env:VIZIO_IP = "192.168.1.158"   (or pass -Ip)
 Every "set"/"apply" asks for a typed yes unless -Yes is given.
@@ -71,8 +72,15 @@ function Invoke-Tv {
   $p = @{ Method = $Method; Uri = "$Base/$Path"; Headers = $headers; ContentType = "application/json"; TimeoutSec = 10 } + $script:SkipCert
   if ($null -ne $Body) { $p.Body = ($Body | ConvertTo-Json -Depth 8 -Compress) }
   $r = Invoke-RestMethod @p
+  if ($r -is [string]) { try { $r = $r | ConvertFrom-Json } catch { throw "TV returned non-JSON for $Path : $($r.Substring(0,[Math]::Min(300,$r.Length)))" } }
   if ($r.STATUS -and $r.STATUS.RESULT -ne "SUCCESS") { throw "TV said: $($r.STATUS.RESULT) - $($r.STATUS.DETAIL) ($Path)" }
   $r
+}
+function Get-Raw([string]$Path) {
+  $p = @{ Method = "GET"; Uri = "$Base/$Path"; Headers = @{ AUTH = (Get-Token) }; TimeoutSec = 10; UseBasicParsing = $true } + $script:SkipCert
+  $w = Invoke-WebRequest @p
+  "HTTP $($w.StatusCode)  Content-Type: $($w.Headers['Content-Type'])"
+  $w.Content
 }
 function Confirm-Change([string]$what) {
   if ($Yes) { return $true }
@@ -142,8 +150,10 @@ switch ($Command.ToLower()) {
     @{ ip = $Ip; token = $r2.ITEM.AUTH_TOKEN; device_id = $devId; paired = (Get-Date).ToString("s") } | ConvertTo-Json | Set-Content $TokenFile
     Write-Host "Paired. Token saved to $TokenFile"
   }
+  "raw" { Get-Raw ($Arg1 -replace '^/','') }
   "info" {
-    $d = (Invoke-Tv GET "state/device/deviceinfo").ITEMS[0].VALUE
+    $r = Invoke-Tv GET "state/device/deviceinfo"
+    $d = if ($r.ITEMS) { $r.ITEMS[0].VALUE } elseif ($r.ITEM) { $r.ITEM.VALUE } else { $r }
     "model:    $($d.MODEL_NAME)   version: $($d.VERSION)   serial: $($d.SERIAL_NUMBER)"
     "power:    " + $(if ((Invoke-Tv GET "state/device/power_mode").ITEMS[0].VALUE -eq 1) { "on" } else { "off/standby" })
     "input:    " + (Invoke-Tv GET "menu_native/dynamic/tv_settings/devices/current_input").ITEMS[0].VALUE

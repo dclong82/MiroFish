@@ -10,7 +10,8 @@ Works in Windows PowerShell 5.1 and PowerShell 7. No modules needed.
   .\viziotv.ps1 tree [menu]               # every setting under a menu (or all), one per line
   .\viziotv.ps1 options picture/picture_mode     # allowed values for one setting
   .\viziotv.ps1 set picture/picture_mode "Calibrated Dark"
-  .\viziotv.ps1 apply profiles\example.json      # many settings at once, with a confirmation
+  .\viziotv.ps1 check profiles\onn-W4K65M.json  # validate a profile against the TV, change nothing
+  .\viziotv.ps1 apply profiles\onn-W4K65M.json  # same check, then apply after a typed yes
   .\viziotv.ps1 inputs                    # list inputs;   .\viziotv.ps1 input HDMI-1
   .\viziotv.ps1 power on|off|toggle
   .\viziotv.ps1 key HOME|BACK|OK|UP|DOWN|LEFT|RIGHT|MENU|EXIT|VOL_UP|VOL_DOWN|MUTE_TOGGLE|PLAY|PAUSE|INPUT_NEXT
@@ -103,12 +104,35 @@ function Get-Options([string]$full) {
   $it = $r.ITEMS | Select-Object -First 1
   if ($it.ELEMENTS) { $it.ELEMENTS } elseif ($null -ne $it.MINIMUM) { "range $($it.MINIMUM)..$($it.MAXIMUM)" } else { $it }
 }
-function Set-Setting([string]$full, $value, [switch]$Quiet) {
+# Returns @{ item=<menu item>; value=<normalised value>; error=<string or $null>; options=<allowed> }
+function Resolve-Setting([string]$full, $value) {
   $parent = Split-Path $full -Parent; $cname = Split-Path $full -Leaf
   $parent = $parent -replace '\\','/'
-  $item = Get-Menu $parent | Where-Object { $_.CNAME -eq $cname } | Select-Object -First 1
-  if (-not $item) { throw "No setting '$cname' under '$parent'. Run: .\viziotv.ps1 settings $parent" }
-  if ($item.TYPE -eq "T_VALUE_V1" -and $value -match '^-?\d+$') { $value = [int]$value }
+  $item = $null
+  try { $item = Get-Menu $parent | Where-Object { $_.CNAME -eq $cname } | Select-Object -First 1 } catch {}
+  if (-not $item) { return @{ error = "not found on this TV" } }
+  $opts = $null
+  try { $opts = Get-Options $full } catch {}
+  if ($item.TYPE -match 'LIST') {
+    if ($opts -is [array] -or $opts -is [string]) {
+      $match = @($opts) | Where-Object { "$_" -ieq "$value" } | Select-Object -First 1
+      if ($null -eq $match) { return @{ item = $item; error = "'$value' not allowed"; options = (@($opts) -join ' | ') } }
+      $value = $match
+    }
+  } elseif ($item.TYPE -eq "T_VALUE_V1") {
+    if ("$value" -notmatch '^-?\d+$') { return @{ item = $item; error = "needs a number"; options = $opts } }
+    $value = [int]$value
+    if ($opts -is [string] -and $opts -match 'range (-?\d+)\.\.(-?\d+)') {
+      if ($value -lt [int]$Matches[1] -or $value -gt [int]$Matches[2]) { return @{ item = $item; error = "out of range"; options = $opts } }
+    }
+  }
+  @{ item = $item; value = $value; error = $null; options = $opts }
+}
+function Set-Setting([string]$full, $value, [switch]$Quiet) {
+  $parent = (Split-Path $full -Parent) -replace '\\','/'; $cname = Split-Path $full -Leaf
+  $res = Resolve-Setting $full $value
+  if ($res.error) { throw "$full : $($res.error). Allowed: $($res.options)" }
+  $item = $res.item; $value = $res.value
   if (-not $Quiet) {
     if (-not (Confirm-Change "Set $full : '$($item.VALUE)' -> '$value'")) { return }
   }
@@ -181,12 +205,25 @@ switch ($Command.ToLower()) {
   }
   "options"  { Get-Options $Arg1 }
   "set"      { Set-Setting $Arg1 $Arg2 }
-  "apply" {
-    $plan = Get-Content $Arg1 | ConvertFrom-Json
-    Write-Host "Plan from $Arg1 :"
-    $plan.PSObject.Properties | ForEach-Object { "  {0,-40} -> {1}" -f $_.Name, $_.Value }
-    if (-not (Confirm-Change "Apply all $($plan.PSObject.Properties.Count) settings?")) { return }
-    foreach ($p in $plan.PSObject.Properties) { try { Set-Setting $p.Name $p.Value -Quiet } catch { Write-Warning "$($p.Name): $_" } }
+  { $_ -in "check","apply" } {
+    $plan = Get-Content $Arg1 -Raw | ConvertFrom-Json
+    Write-Host "Checking $Arg1 against the TV..."
+    $ok = @(); $bad = 0
+    "{0,-50} {1,-22} {2,-22} {3}" -f "SETTING","CURRENT","TARGET","STATUS"
+    foreach ($p in $plan.PSObject.Properties) {
+      $res = Resolve-Setting $p.Name $p.Value
+      if ($res.error) { $bad++; "{0,-50} {1,-22} {2,-22} {3}" -f $p.Name, $res.item.VALUE, $p.Value, "INVALID: $($res.error)  allowed: $($res.options)" }
+      else {
+        $same = "$($res.item.VALUE)" -eq "$($res.value)"
+        "{0,-50} {1,-22} {2,-22} {3}" -f $p.Name, $res.item.VALUE, $res.value, $(if ($same) { "already" } else { "ok" })
+        if (-not $same) { $ok += ,@($p.Name, $res.value) }
+      }
+    }
+    if ($Command -eq "check") { Write-Host "`n$($ok.Count) change(s) would be applied, $bad invalid."; return }
+    if ($bad -gt 0) { Write-Host "`n$bad invalid line(s). Fix the profile (see allowed values) and run again."; return }
+    if ($ok.Count -eq 0) { Write-Host "`nNothing to change."; return }
+    if (-not (Confirm-Change "Apply $($ok.Count) change(s)?")) { return }
+    foreach ($c in $ok) { try { Set-Setting $c[0] $c[1] -Quiet } catch { Write-Warning "$($c[0]): $_" } }
   }
   "inputs" {
     try { (Invoke-Tv GET "menu_native/dynamic/tv_settings/devices/name_input").ITEMS | ForEach-Object { "{0,-10} {1}" -f $_.CNAME, $_.VALUE.NAME } }

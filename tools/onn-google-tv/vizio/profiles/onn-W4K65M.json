@@ -14,14 +14,13 @@
   "picture/clarity/super_resolution": "Off",
   "picture/clarity/black_detail": "Off",
   "picture/motion_control/judder_reduction": 0,
-  "picture/advanced_picture/active_full_array": "High",
   "picture/advanced_picture/local_contrast": "Off",
   "picture/advanced_picture/ambient_light_sensor": "Off",
   "picture/advanced_picture/film_mode": "On",
   "audio/surround_sound": "Off",
   "hdmi_and_gaming/hdmi_settings/cec_function": "Enabled",
   "hdmi_and_gaming/hdmi_settings/one_touch_play": "Enabled",
-  "system/power/input_at_power_on": "Stream Box",
+  "system/power/input_at_power_on": "Last Used TV Input",
   "privacy_and_legal/vizio_viewing_data": "Off",
   "privacy_and_legal/advertising/limit_ad_tracking": "On"
 }

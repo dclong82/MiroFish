@@ -33,12 +33,28 @@ $StateDir = Join-Path $Here "state"; $BackupDir = Join-Path $Here "backups"
 New-Item -ItemType Directory -Force -Path $StateDir, $BackupDir | Out-Null
 $TokenFile = Join-Path $StateDir "token.json"
 
-# The TV uses a self-signed certificate.
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# The TV uses a self-signed certificate. On Windows PowerShell 5.1 a scriptblock
+# validation callback only works for the first request in a session, so install a
+# compiled callback instead.
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+[Net.ServicePointManager]::Expect100Continue = $false
 if ($PSVersionTable.PSVersion.Major -lt 6) {
-  [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-  $script:SkipCert = @{}
-} else { $script:SkipCert = @{ SkipCertificateCheck = $true } }
+  if (-not ("VizioTrustAll" -as [type])) {
+    Add-Type -TypeDefinition @"
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+using System.Net.Security;
+public static class VizioTrustAll {
+  public static void Enable() {
+    ServicePointManager.ServerCertificateValidationCallback = new RemoteCertificateValidationCallback(
+      delegate(object s, X509Certificate c, X509Chain ch, SslPolicyErrors e) { return true; });
+  }
+}
+"@
+  }
+  [VizioTrustAll]::Enable()
+  $script:SkipCert = @{ DisableKeepAlive = $true }
+} else { $script:SkipCert = @{ SkipCertificateCheck = $true; DisableKeepAlive = $true } }
 
 if (-not $Ip -and (Test-Path $TokenFile)) { $Ip = (Get-Content $TokenFile | ConvertFrom-Json).ip }
 if (-not $Ip) { throw "No TV address. Set `$env:VIZIO_IP = '192.168.1.158' or pass -Ip." }
